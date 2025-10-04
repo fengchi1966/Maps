@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Spring & Autumn Overlay (PGW)</title>
+  <title>Spring & Autumn Overlay (wld)</title>
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -48,11 +48,11 @@
         '&copy; <a href="https://carto.com/">CARTO</a>'
     }).addTo(map);
 
-    // ------------------ 读取 PGW + PNG 并叠加 ------------------
+    // ------------------ 读取 wld + PNG 并叠加 ------------------
     const pngUrl = 'EN-LateSpringAutumn_modified.png';
-    const pgwUrl = 'EN-LateSpringAutumn_modified.pgw';
+    const wldUrl = 'EN-LateSpringAutumn_modified.wld';
 
-    // 兼容 GitHub Pages 对 pgw 的 MIME：强制 arrayBuffer+解码
+    // 兼容 GitHub Pages 对 wld 的 MIME：强制 arrayBuffer+解码
     async function readText(url) {
       const r = await fetch(url + '?v=' + Date.now());
       if (!r.ok) throw new Error(`Fetch ${url} failed: ${r.status}`);
@@ -60,11 +60,11 @@
       return new TextDecoder('utf-8').decode(buf);
     }
 
-    function parsePGW(text) {
+    function parsewld(text) {
       // world file: 6 行数字 A,B,D,E,C,F
       const nums = text.trim().split(/[\r\n]+/).map(s => parseFloat(s));
       if (nums.length !== 6 || nums.some(n => Number.isNaN(n))) {
-        throw new Error('PGW 解析失败：需要 6 行数字');
+        throw new Error('wld 解析失败：需要 6 行数字');
       }
       const [A, B, D, E, C, F] = nums; // A,B,D,E,C,F
       return { A, B, D, E, C, F };
@@ -81,9 +81,9 @@
 
     (async () => {
       try {
-        // 1) 读 PGW
-        const pgwText = await readText(pgwUrl);
-        const { A, B, D, E, C, F } = parsePGW(pgwText);
+        // 1) 读 wld
+        const wldText = await readText(wldUrl);
+        const { A, B, D, E, C, F } = parsewld(wldText);
 
         // 2) PNG 尺寸
         const { width: W, height: H } = await waitImageSize(pngUrl);
@@ -129,3 +129,4 @@
   </script>
 </body>
 </html>
+
