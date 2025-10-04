@@ -1,149 +1,131 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>PNG+PGW 诊断 · 无文字地形底图</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Leaflet（无 SRI，避免被拦） -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <title>Spring & Autumn Overlay (PGW)</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    html,body,#map { height:100%; margin:0; }
-    .toolbar{
-      position: fixed; left: 10px; top: 10px; z-index: 1000;
-      background: rgba(255,255,255,.95); border:1px solid #e5e7eb; border-radius:10px;
-      padding:8px 10px; font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      box-shadow: 0 4px 14px rgba(0,0,0,.08);
+    html, body, #map { height: 100%; margin: 0; }
+    #opacityBox {
+      position: absolute; left: 12px; top: 12px; z-index: 9999;
+      background: rgba(255,255,255,0.9); padding: 8px 12px; border-radius: 10px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans";
+      box-shadow: 0 2px 8px rgba(0,0,0,.15);
     }
-    .status{
-      position: fixed; left: 10px; bottom: 10px; z-index: 1000;
-      background: rgba(0,0,0,.75); color:#fff; padding:8px 10px; border-radius:8px; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      max-width: 80vw; white-space: pre-wrap;
+    #toast {
+      position: absolute; left: 12px; bottom: 12px; z-index: 9999;
+      background: rgba(0,0,0,.75); color: #fff; padding: 8px 12px; border-radius: 8px;
+      font-size: 14px; max-width: 520px;
     }
-    .ok{ color:#8ef58e; } .bad{ color:#ffb1b1; }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-
-  <div class="toolbar">
-    <label>Overlay opacity</label>
-    <input id="opacity" type="range" min="0" max="1" step="0.01" value="0.9">
+  <div id="opacityBox">
+    Overlay opacity：
+    <input id="opacity" type="range" min="0" max="1" step="0.05" value="0.75">
   </div>
-
-  <div id="status" class="status">init…</div>
+  <div id="map"></div>
+  <div id="toast">完成。若看不到图，请滚轮缩放一次；叠加区会有红色边框。</div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // 你的 PNG 文件名（与 .pgw 同名同目录）
-    const PNG_URL = 'EN-LateSpringAutumn_modified.png';
-    const PGW_URL = PNG_URL.replace(/\.png$/i, '.pgw');
+    // ------------------ 地图 ------------------
+    const map = L.map('map', {
+      center: [34.5, 108.9],
+      zoom: 5,
+      zoomControl: true
+    });
 
-    const statusEl = document.getElementById('status');
-    const log = (...args) => {
-      console.log(...args);
-      statusEl.textContent += '\n' + args.join(' ');
-    };
-    const set = (msg) => statusEl.textContent = msg;
+    // Carto Light - 无标签底图（清爽/无需 token）
+    L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_nolabels/{z}/{x}/{y}.png', {
+      subdomains: 'abcd',
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> | ' +
+        '&copy; <a href="https://carto.com/">CARTO</a>'
+    }).addTo(map);
 
-    // 底图：Carto Light NoLabels（无文字） + Esri Hillshade 阴影地形（无文字）
-    const carto = L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
-      { subdomains:'abcd', maxZoom:19, attribution:'&copy; OSM & CARTO' }
-    );
-    const hillshade = L.tileLayer(
-      'https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom:19, opacity:0.55, attribution:'&copy; Esri' }
-    );
+    // ------------------ 读取 PGW + PNG 并叠加 ------------------
+    const pngUrl = 'EN-LateSpringAutumn_modified.png';
+    const pgwUrl = 'EN-LateSpringAutumn_modified.pgw';
 
-    const map = L.map('map', { center:[35,105], zoom:4, layers:[carto, hillshade] });
-
-    // 解析 PGW -> bounds
-    function pgwToBounds(text, w, h){
-      const v = text.trim().split(/\r?\n/).map(Number);
-      if (v.length < 6 || v.some(n => Number.isNaN(n))) throw new Error('PGW 不是 6 行数字: ' + JSON.stringify(v));
-      const [A,D,B,E,C,F] = v;   // A: 像素宽度; E: 像素高度(多为负); C/F: 左上像素中心经纬度
-      if (Math.abs(B)>1e-10 || Math.abs(D)>1e-10) throw new Error('该 PNG 世界文件包含旋转项，当前示例不支持');
-      const west  = C - A/2;
-      const north = F - E/2;
-      const east  = west + A * w;
-      const south = north + E * h;
-      return [[south, west], [north, east]];
-    }
-
-    async function head(url){
-      const r = await fetch(url, { method:'HEAD' });
-      return { ok:r.ok, status:r.status, url:r.url, headers:[...r.headers.entries()] };
-    }
-
-    async function getText(url){
+    // 兼容 GitHub Pages 对 pgw 的 MIME：强制 arrayBuffer+解码
+    async function readText(url) {
       const r = await fetch(url + '?v=' + Date.now());
-      if (!r.ok) throw new Error(url + ' 状态码: ' + r.status);
-      return await r.text();
+      if (!r.ok) throw new Error(`Fetch ${url} failed: ${r.status}`);
+      const buf = await r.arrayBuffer();
+      return new TextDecoder('utf-8').decode(buf);
     }
 
-    async function loadImage(url){
-      return await new Promise((resolve, reject)=>{
-        const im = new Image();
-        // 同源，无需 crossOrigin，但设上也不影响
-        im.crossOrigin = 'anonymous';
-        im.onload = () => resolve(im);
-        im.onerror = () => reject(new Error('PNG 加载失败: ' + url));
-        im.src = url + '?v=' + Date.now();
+    function parsePGW(text) {
+      // world file: 6 行数字 A,B,D,E,C,F
+      const nums = text.trim().split(/[\r\n]+/).map(s => parseFloat(s));
+      if (nums.length !== 6 || nums.some(n => Number.isNaN(n))) {
+        throw new Error('PGW 解析失败：需要 6 行数字');
+      }
+      const [A, B, D, E, C, F] = nums; // A,B,D,E,C,F
+      return { A, B, D, E, C, F };
+    }
+
+    function waitImageSize(url) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        img.onerror = () => reject(new Error('PNG 加载失败: ' + url));
+        img.src = url + '?v=' + Date.now();
       });
     }
 
-    async function run(){
-      set('开始诊断…\n- PNG: ' + PNG_URL + '\n- PGW: ' + PGW_URL);
+    (async () => {
+      try {
+        // 1) 读 PGW
+        const pgwText = await readText(pgwUrl);
+        const { A, B, D, E, C, F } = parsePGW(pgwText);
 
-      // 1) 直链探测（HEAD）
-      const pngHead = await head(PNG_URL);
-      log(`PNG HEAD -> ${pngHead.status} ${pngHead.ok ? '✅' : '❌'}`);
-      if (!pngHead.ok) throw new Error('PNG 直链不可达（不是 200）');
+        // 2) PNG 尺寸
+        const { width: W, height: H } = await waitImageSize(pngUrl);
 
-      const pgwHead = await head(PGW_URL);
-      log(`PGW HEAD -> ${pgwHead.status} ${pgwHead.ok ? '✅' : '❌'}`);
-      if (!pgwHead.ok) throw new Error('PGW 直链不可达（不是 200）');
+        // 3) 计算四角（在源投影 EPSG:3857 的平面坐标）
+        // 公式：X = C + A*x + B*y；Y = F + D*x + E*y，x∈[0..W]，y∈[0..H]
+        const corners3857 = [
+          [C + A*0   + B*0  , F + D*0   + E*0  ], // 左上
+          [C + A*W   + B*0  , F + D*W   + E*0  ], // 右上
+          [C + A*W   + B*H  , F + D*W   + E*H  ], // 右下
+          [C + A*0   + B*H  , F + D*0   + E*H  ]  // 左下
+        ];
 
-      // 2) 载入 PNG，拿到尺寸
-      set('载入 PNG…');
-      const img = await loadImage(PNG_URL);
-      log(`PNG size -> ${img.naturalWidth} x ${img.naturalHeight}`);
+        // 4) 转成经纬度（Leaflet 需要 LatLng）。地图是 EPSG:3857 -> 用 unproject
+        const cornersLatLng = corners3857.map(([x, y]) =>
+          L.CRS.EPSG3857.unproject(L.point(x, y))
+        );
+        const bounds = L.latLngBounds(cornersLatLng);
 
-      // 3) 取 PGW 并计算 bounds
-      set('读取 PGW…');
-      const pgwText = await getText(PGW_URL);
-      log('PGW 内容:\n' + pgwText);
-      const bounds = pgwToBounds(pgwText, img.naturalWidth, img.naturalHeight);
-      log('bounds -> SW:', bounds[0], ' NE:', bounds[1]);
+        // 5) 叠加 PNG
+        const overlay = L.imageOverlay(pngUrl, bounds, { opacity: 0.75, interactive: false }).addTo(map);
 
-      // 4) 画出 bounds 框，便于目检
-      const rect = L.rectangle(bounds, { color:'#ff3b30', weight:2, fill:false }).addTo(map);
+        // 6) 红色边框（对齐检查用）
+        L.polyline([...cornersLatLng, cornersLatLng[0]], {
+          color: '#e74c3c', weight: 2, opacity: 0.9
+        }).addTo(map);
 
-      // 5) 加 overlay
-      const overlay = L.imageOverlay(PNG_URL, bounds, {
-        opacity: parseFloat(document.getElementById('opacity').value),
-        crossOrigin: 'anonymous'
-      }).addTo(map);
+        // 7) 视图聚焦
+        map.fitBounds(bounds.pad(0.05));
 
-      map.fitBounds(bounds, { padding:[20,20] });
-      set('完成。若看不到图，请把鼠标滚轮缩放试试，并观察红色边框是否出现。');
-    }
+        // 8) 透明度控制
+        document.getElementById('opacity').addEventListener('input', e => {
+          overlay.setOpacity(parseFloat(e.target.value));
+        });
 
-    run().catch(err=>{
-      console.error(err);
-      set('❌ ERROR: ' + err.message + '\n(请把这个错误发我)');
-      alert('Overlay load error: ' + err.message);
-    });
-
-    document.getElementById('opacity').addEventListener('input', (e)=>{
-      const o = parseFloat(e.target.value);
-      // 动态更新 overlay 透明度
-      const layers = [];
-      map.eachLayer(l => layers.push(l));
-      layers.forEach(l => {
-        if (l instanceof L.ImageOverlay) l.setOpacity(o);
-      });
-    });
+        // 移除提示
+        setTimeout(() => { const t = document.getElementById('toast'); if (t) t.remove(); }, 3500);
+      } catch (err) {
+        console.error(err);
+        alert('叠加失败：' + err.message);
+      }
+    })();
   </script>
 </body>
 </html>
