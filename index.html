@@ -20,6 +20,8 @@
       background: rgba(0,0,0,.75); color: #fff; padding: 8px 12px; border-radius: 8px;
       font-size: 14px; max-width: 520px;
     }
+    /* 让灰底图半透明，突出地形 */
+    .graybase { opacity: .45; }
   </style>
 </head>
 <body>
@@ -39,14 +41,22 @@
       zoomControl: true
     });
 
-    // Carto Light - 无标签底图（清爽/无需 token）
-    L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_nolabels/{z}/{x}/{y}.png', {
-      subdomains: 'abcd',
-      maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> | ' +
-        '&copy; <a href="https://carto.com/">CARTO</a>'
-    }).addTo(map);
+    // 1) Esri World Hillshade —— 仅地形阴影，无标签（推荐做主底图）
+    const hillshade = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.esri.com/">Esri</a> | Esri World Hillshade'
+      }
+    ).addTo(map);
+
+    // 2) Esri Light Gray Base —— 无标签灰底（轻描岸线/线框，搭配 hillshade 更清晰）
+    const grayBase = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        className: 'graybase',
+        attribution: '&copy; Esri | World Light Gray Base'
+      }
+    ).addTo(map);
 
     // ------------------ 读取 wld + PNG 并叠加 ------------------
     const pngUrl = 'EN-LateSpringAutumn_modified.png';
