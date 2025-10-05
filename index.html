@@ -84,7 +84,7 @@
     // （可选）非常淡的灰底线框（便于识别海岸线/边界）
     const grayBase = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom: 19, opacity: 0.20, attribution: '&copy; Esri | Light Gray Base' }
+      { maxZoom: 19, opacity: 0.00, attribution: '&copy; Esri | Light Gray Base' }
     ).addTo(map);
 
     // ------------------ 叠加图配置（PNG + WLD） ------------------
@@ -269,3 +269,4 @@
   </script>
 </body>
 </html>
+
